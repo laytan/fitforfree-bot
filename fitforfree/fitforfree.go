@@ -3,7 +3,9 @@ package fitforfree
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
 )
 
 // GetLessons gets available free fitness lessons between 2 timestamps
@@ -18,7 +20,12 @@ func GetLessons(start uint, end uint) error {
 		panic(err)
 	}
 
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", ""))
+	bearerToken, isSet := os.LookupEnv("FIT_FOR_FREE_TOKEN")
+	if !isSet {
+		log.Panic("ERROR: FIT_FOR_FREE_TOKEN env variable not set")
+	}
+
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", bearerToken))
 	_, err = client.Do(req)
 	if err != nil {
 		panic(err)

@@ -20,10 +20,11 @@ type User struct {
 // Noti model
 type Noti struct {
 	gorm.Model
-	UserID uint
-	User   User
-	Start  uint
-	End    uint
+	UserID    uint
+	User      User
+	Start     uint64
+	End       uint64
+	ClassType string
 }
 
 // TODO: Remove using lock because that would only be a problem on thousands of writes and goroutines

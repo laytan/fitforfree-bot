@@ -1,2 +1,5 @@
 fff.log
 database/database.sqlite
+.vscode
+*.env
+*.log
