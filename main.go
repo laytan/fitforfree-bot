@@ -42,21 +42,28 @@ func main() {
 	// handlers handle specific messages
 	handlers := []bot.Handler{
 		&bot.CommandHandler{
-			Command: "help",
+			Command: []string{"help", "start"},
 			Handler: HelpHandler,
 		},
 		&bot.CommandHandler{
-			Command: "notificaties",
+			Command: []string{"notificaties"},
 			Handler: ListNotisHandler(db),
 		},
+		&bot.CommandHandler{
+			Command: []string{"verwijder", "remove"},
+			Handler: RemoveHandler(db),
+		},
 		bot.NewConversationHandler(
-			"noti",
+			[]string{"noti"},
 			[]bot.ConversationHandlerFunc{
+				// Ask for date
 				StartNotiHandler,
+				// Ask for group or free
 				DateNotiHandler,
-				StartTimeNotiHandler,
-				EndTimeNotiHandler,
+				// Show lessons on that day and ask for choise
 				TypeNotiHandler,
+				// Get specific class
+				ClassNotiHandler,
 			},
 			NotiHandler(db),
 		),
@@ -73,16 +80,6 @@ func main() {
 	<-stop
 	log.Println("Stopping program")
 }
-
-// func check() {
-// 	ticker := time.NewTicker(10 * time.Second)
-// 	go func() {
-// 		for {
-// 			<-ticker.C
-// 			fmt.Println("tick")
-// 		}
-// 	}()
-// }
 
 // setupLogs sets up the logger to log to file and stdout. Filename is dependant on the environment
 func setupLogs() *os.File {

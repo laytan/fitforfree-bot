@@ -13,14 +13,15 @@ import (
 // assureUserExists checks if the update user id exists in our database
 // if it does we set the handlePayload's user to it
 // if it does not we create the user and assign it to the handlePayload
-func AssureUserExists(db *database.Database) func(*bot.HandlePayload) {
+func AssureUserExists(db *gorm.DB) func(*bot.HandlePayload) {
 	return func(p *bot.HandlePayload) {
-		db.Mutex.Lock()
-		defer db.Mutex.Unlock()
+		if p.Update.Message == nil {
+			return
+		}
 
 		user := database.User{}
 		// Try to get the user with given id, if err and err is because we did not find
-		if err := db.Conn.First(&user, p.Update.Message.From.ID).Error; err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
+		if err := db.First(&user, p.Update.Message.From.ID).Error; err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
 			// TODO: Add database.NewUserFromUpdate(tgbotapi.Update) on user model
 			// Create new user
 			user = database.User{
@@ -30,7 +31,7 @@ func AssureUserExists(db *database.Database) func(*bot.HandlePayload) {
 				ChatID:   uint(p.Update.Message.Chat.ID),
 			}
 
-			if err := db.Conn.Create(&user).Error; err != nil {
+			if err := db.Create(&user).Error; err != nil {
 				log.Printf("ERROR: %+v with UPDATE: %+v", err, p.Update)
 			}
 
@@ -42,5 +43,7 @@ func AssureUserExists(db *database.Database) func(*bot.HandlePayload) {
 
 // LogUpdate logs all messages sent to the program
 func LogUpdate(p *bot.HandlePayload) {
-	log.Printf("[%s](%d) Message: %s", p.Update.Message.From.FirstName, p.Update.Message.From.ID, p.Update.Message.Text)
+	if p.Update.Message != nil {
+		log.Printf("[%s](%d) Message: %s", p.Update.Message.From.FirstName, p.Update.Message.From.ID, p.Update.Message.Text)
+	}
 }

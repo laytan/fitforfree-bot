@@ -18,7 +18,16 @@ type HandlePayload struct {
 }
 
 func (p HandlePayload) Respond(text string) {
-	msg := tgbotapi.NewMessage(p.Update.Message.Chat.ID, text)
+	var chatID int64
+	if p.Update.Message != nil {
+		chatID = p.Update.Message.Chat.ID
+	}
+
+	if p.Update.CallbackQuery != nil {
+		chatID = p.Update.CallbackQuery.Message.Chat.ID
+	}
+
+	msg := tgbotapi.NewMessage(chatID, text)
 	p.Bot.Send(msg)
 }
 
@@ -30,13 +39,21 @@ type Handler interface {
 
 // CommandHandler listens for any command with the given Command with a slash prepended
 type CommandHandler struct {
-	Command string
+	Command []string
 	Handler func(payload *HandlePayload, arguments []string)
 }
 
 // isMatch determines if this update should be handled by this handler
 func (c *CommandHandler) isMatch(update tgbotapi.Update) bool {
-	return update.Message.IsCommand() && update.Message.Command() == c.Command
+	if update.Message != nil && update.Message.IsCommand() {
+		for _, command := range c.Command {
+			if command == update.Message.Command() {
+				return true
+			}
+		}
+		return false
+	}
+	return false
 }
 
 func (c *CommandHandler) handle(p *HandlePayload) {
@@ -49,13 +66,13 @@ type ConversationState struct {
 }
 
 // ConversationHandlerFunc is a function used as a handler in the conversation handler
-type ConversationHandlerFunc func(payload *HandlePayload) (interface{}, bool)
+type ConversationHandlerFunc func(payload *HandlePayload, state []ConversationState) (interface{}, bool)
 
 // ConversationFinalizerFunc is a function that gets passed the state of the conversation after it is finished
 type ConversationFinalizerFunc func(payload *HandlePayload, state []ConversationState)
 
 type conversationHandler struct {
-	startCommand string
+	startCommand []string
 	inProgress   bool
 	// The result from all ran handlers
 	state []ConversationState
@@ -67,7 +84,19 @@ type conversationHandler struct {
 
 // isMatch will tell the caller we want to handle the update when we are in progress of a conversation or the start command is given
 func (c *conversationHandler) isMatch(update tgbotapi.Update) bool {
-	return c.inProgress || (update.Message.IsCommand() && update.Message.Command() == c.startCommand)
+	if c.inProgress {
+		return true
+	}
+
+	if update.Message != nil && update.Message.IsCommand() {
+		for _, command := range c.startCommand {
+			if command == update.Message.Command() {
+				return true
+			}
+		}
+		return false
+	}
+	return false
 }
 
 // handle determines which handler to run and what to pass it
@@ -77,7 +106,7 @@ func (c *conversationHandler) handle(p *HandlePayload) {
 	// get handler to pass to now and check if the handler exists
 	curr := len(c.state)
 
-	res, valid := c.handlers[curr](p)
+	res, valid := c.handlers[curr](p, c.state)
 	if valid == false {
 		// Return without changing a thing so we stay in this handler for the user to try again
 		return
@@ -99,7 +128,7 @@ func (c *conversationHandler) handle(p *HandlePayload) {
 }
 
 // NewConversationHandler returns a conversationhandler with specified options
-func NewConversationHandler(startCommand string, handlers []ConversationHandlerFunc, finalizer ConversationFinalizerFunc) *conversationHandler {
+func NewConversationHandler(startCommand []string, handlers []ConversationHandlerFunc, finalizer ConversationFinalizerFunc) *conversationHandler {
 	return &conversationHandler{
 		inProgress:   false,
 		state:        make([]ConversationState, 0),
@@ -139,8 +168,7 @@ func Start(middleware []Middleware, handlers []Handler) {
 
 	// Listen for new updates over the updates channel
 	for update := range updates {
-		// An update is not always a message
-		if update.Message == nil {
+		if update.Message == nil && update.CallbackQuery == nil {
 			continue
 		}
 
