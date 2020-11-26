@@ -1,7 +1,8 @@
 package database
 
 import (
-	"sync"
+	"fmt"
+	"os"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -17,6 +18,10 @@ type User struct {
 	Notis    []Noti
 }
 
+func (u User) Admin() bool {
+	return os.Getenv("ADMIN_CHAT_ID") == fmt.Sprintf("%d", u.ChatID)
+}
+
 // Noti model
 type Noti struct {
 	gorm.Model
@@ -27,15 +32,8 @@ type Noti struct {
 	ClassType string
 }
 
-// TODO: Remove using lock because that would only be a problem on thousands of writes and goroutines
-// Database encapsulates the gorm db and a mutex lock to never get a database is locked error
-type Database struct {
-	Conn  *gorm.DB
-	Mutex sync.Mutex
-}
-
 // New returns a database connection which is migrated acording to the models
-func New(dbPath string) *Database {
+func New(dbPath string) *gorm.DB {
 	// Connect to sqlite db and initialize gorm ORM
 	gormDb, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
 	if err != nil {
@@ -47,8 +45,5 @@ func New(dbPath string) *Database {
 		panic(err)
 	}
 
-	return &Database{
-		Conn:  gormDb,
-		Mutex: sync.Mutex{},
-	}
+	return gormDb
 }
