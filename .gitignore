@@ -2,4 +2,5 @@ fff.log
 database/database.sqlite
 .vscode
 *.env
+!sample.env
 *.log
