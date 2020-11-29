@@ -2,10 +2,14 @@ package database
 
 import (
 	"fmt"
+	"io"
+	"log"
 	"os"
+	"time"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 // User model
@@ -33,9 +37,11 @@ type Noti struct {
 }
 
 // New returns a database connection which is migrated acording to the models
-func New(dbPath string) *gorm.DB {
+func New(dbPath string, theLogger logger.Interface) *gorm.DB {
 	// Connect to sqlite db and initialize gorm ORM
-	gormDb, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	gormDb, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
+		Logger: theLogger,
+	})
 	if err != nil {
 		panic(err)
 	}
@@ -46,4 +52,22 @@ func New(dbPath string) *gorm.DB {
 	}
 
 	return gormDb
+}
+
+func NewLogger(logFile *os.File) logger.Interface {
+	if os.Getenv("ENV") == "production" {
+		// Set up logging so it writes to stdout and to a file
+		wrt := io.MultiWriter(os.Stdout, logFile)
+
+		return logger.New(
+			log.New(wrt, "\r\n", log.LstdFlags),
+			logger.Config{
+				SlowThreshold: time.Millisecond * 100,
+				LogLevel:      logger.Warn,
+				Colorful:      false,
+			},
+		)
+	}
+
+	return logger.Default.LogMode(logger.Info)
 }
