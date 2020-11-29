@@ -25,7 +25,7 @@ func main() {
 	log.Println("Starting program")
 
 	// Get database conn
-	db := database.New("database/database.sqlite")
+	db := database.New("database/database.sqlite", database.NewLogger(logFile))
 
 	// middlewares are ran on every chat update
 	middleware := []bot.Middleware{
@@ -46,12 +46,16 @@ func main() {
 			Handler: HelpHandler,
 		},
 		&bot.CommandHandler{
-			Command: []string{"notificaties"},
+			Command: []string{"notificaties", "notifications"},
 			Handler: ListNotisHandler(db),
 		},
 		&bot.CommandHandler{
 			Command: []string{"verwijder", "remove"},
 			Handler: RemoveHandler(db),
+		},
+		&bot.CommandHandler{
+			Command: []string{"clear"},
+			Handler: ClearHandler(db),
 		},
 		bot.NewConversationHandler(
 			[]string{"noti"},
