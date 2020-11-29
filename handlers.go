@@ -17,16 +17,23 @@ import (
 )
 
 func HelpHandler(p *bot.HandlePayload, _ []string) {
-	msg := tgbotapi.NewMessage(p.Update.Message.Chat.ID, fmt.Sprintf("Geen stress %s", p.User.Name))
-	p.Bot.Send(msg)
+	p.Respond(
+		`
+		Te gebruiken commandos:
+		- /noti: Start een gesprek om een nieuwe notificatie toe te voegen
+		- /notifications: Verkrijg een lijst met alle ingestelde notificaties
+		- /clear: Verwijder al je notificaties
+		- /remove {nummer}: Verwijder de notificatie met het gegeven nummer 
+		`,
+	)
 }
 
-func StartNotiHandler(p *bot.HandlePayload, _ []bot.ConversationState) (interface{}, bool) {
+func StartNotiHandler(p *bot.HandlePayload, _ []interface{}) (interface{}, bool) {
 	p.Respond("Hier gaan we, welke datum wil je sporten? (d-m-yyyy)")
 	return nil, true
 }
 
-func DateNotiHandler(p *bot.HandlePayload, _ []bot.ConversationState) (interface{}, bool) {
+func DateNotiHandler(p *bot.HandlePayload, _ []interface{}) (interface{}, bool) {
 	date, err := time.Parse("2-1-2006", p.Update.Message.Text)
 	if err != nil {
 		p.Respond("Vul een geldige datum in, bijvoorbeeld 30-1-2020.")
@@ -45,14 +52,14 @@ func DateNotiHandler(p *bot.HandlePayload, _ []bot.ConversationState) (interface
 	return date, true
 }
 
-func TypeNotiHandler(p *bot.HandlePayload, s []bot.ConversationState) (interface{}, bool) {
+func TypeNotiHandler(p *bot.HandlePayload, s []interface{}) (interface{}, bool) {
 	if p.Update.CallbackQuery == nil || !(p.Update.CallbackQuery.Data == "group_lesson|mixed_lesson" || p.Update.CallbackQuery.Data == "free_practise") {
 		p.Respond("Kies aub Groepsles of Vrij.")
 		return nil, false
 	}
 	classType := p.Update.CallbackQuery.Data
 
-	selectedDate, ok := s[1].Value.(time.Time)
+	selectedDate, ok := s[1].(time.Time)
 	if !ok {
 		p.Respond("Geen goede datum ingevuld")
 		// TODO: End conversation or send back to date picking
@@ -89,14 +96,14 @@ func TypeNotiHandler(p *bot.HandlePayload, s []bot.ConversationState) (interface
 	return filteredTypes, true
 }
 
-func ClassNotiHandler(p *bot.HandlePayload, s []bot.ConversationState) (interface{}, bool) {
+func ClassNotiHandler(p *bot.HandlePayload, s []interface{}) (interface{}, bool) {
 	num, err := strconv.Atoi(p.Update.Message.Text)
 	if err != nil {
 		p.Respond("Ongeldig nummer, probeer opnieuw.")
 		return nil, false
 	}
 
-	lessons, ok := s[2].Value.([]fitforfree.Lesson)
+	lessons, ok := s[2].([]fitforfree.Lesson)
 	if !ok {
 		p.Respond("Er ging iets fout, probeer opnieuw.")
 		log.Println("ERROR: Can not convert state back to lessons slice")
@@ -114,8 +121,8 @@ func ClassNotiHandler(p *bot.HandlePayload, s []bot.ConversationState) (interfac
 
 // NotiHandler first type casts the conversation's state, then validates the times entered and finally inserts a new noti into the db
 func NotiHandler(db *gorm.DB) bot.ConversationFinalizerFunc {
-	return func(p *bot.HandlePayload, s []bot.ConversationState) {
-		lesson, ok := s[3].Value.(fitforfree.Lesson)
+	return func(p *bot.HandlePayload, s []interface{}) {
+		lesson, ok := s[3].(fitforfree.Lesson)
 		if !ok {
 			p.Respond("Er ging iets fout bij het aanmaken van de notificatie.")
 			log.Printf("ERROR: Can't assert type fitforfree.lesson on given lesson: %+v", s[3])
@@ -169,7 +176,7 @@ func ListNotisAdminHandler(db *gorm.DB, p *bot.HandlePayload) {
 	msg := ""
 
 	notis := make([]database.Noti, 0)
-	if err := db.Find(&notis).Error; err != nil {
+	if err := db.Preload("User").Find(&notis).Error; err != nil {
 		log.Printf("ERROR: Error retrieving all notis from the database for ListNotisAdminHandler, err: %+v", err)
 		p.Respond("Er ging iets fout, probeer het opnieuw")
 		return
@@ -258,7 +265,7 @@ func RemoveHandler(db *gorm.DB) func(*bot.HandlePayload, []string) {
 			return
 		}
 
-		if noti.UserID != p.User.ID {
+		if noti.UserID != p.User.ID && !p.User.Admin() {
 			p.Respond("Je kunt deze notificatie niet verwijderen omdat deze door iemand anders is gemaakt")
 			return
 		}
@@ -275,6 +282,7 @@ func RemoveHandler(db *gorm.DB) func(*bot.HandlePayload, []string) {
 
 func ClearHandler(db *gorm.DB) func(*bot.HandlePayload, []string) {
 	return func(p *bot.HandlePayload, _ []string) {
-		db.Where("userID = ?", p.User.ID).Delete(&database.Noti{})
+		db.Where("user_id = ?", p.User.ID).Delete(&database.Noti{})
+		p.Respond("Notificaties verwijderd")
 	}
 }

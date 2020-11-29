@@ -10,10 +10,14 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 )
 
+type Sender interface {
+	Send(tgbotapi.Chattable) (tgbotapi.Message, error)
+}
+
 // HandlePayload wraps update and bot for convenience
 type HandlePayload struct {
 	Update tgbotapi.Update
-	Bot    *tgbotapi.BotAPI
+	Bot    Sender
 	User   database.User
 }
 
@@ -21,10 +25,10 @@ func (p HandlePayload) Respond(text string) {
 	var chatID int64
 	if p.Update.Message != nil {
 		chatID = p.Update.Message.Chat.ID
-	}
-
-	if p.Update.CallbackQuery != nil {
+	} else if p.Update.CallbackQuery != nil {
 		chatID = p.Update.CallbackQuery.Message.Chat.ID
+	} else {
+		return
 	}
 
 	msg := tgbotapi.NewMessage(chatID, text)
@@ -33,7 +37,7 @@ func (p HandlePayload) Respond(text string) {
 
 // Handler is the interface used to handle bot updates
 type Handler interface {
-	isMatch(update tgbotapi.Update) bool
+	isMatch(payload *HandlePayload) bool
 	handle(payload *HandlePayload)
 }
 
@@ -44,10 +48,10 @@ type CommandHandler struct {
 }
 
 // isMatch determines if this update should be handled by this handler
-func (c *CommandHandler) isMatch(update tgbotapi.Update) bool {
-	if update.Message != nil && update.Message.IsCommand() {
+func (c *CommandHandler) isMatch(p *HandlePayload) bool {
+	if p.Update.Message != nil && p.Update.Message.IsCommand() {
 		for _, command := range c.Command {
-			if command == update.Message.Command() {
+			if command == p.Update.Message.Command() {
 				return true
 			}
 		}
@@ -58,84 +62,6 @@ func (c *CommandHandler) isMatch(update tgbotapi.Update) bool {
 
 func (c *CommandHandler) handle(p *HandlePayload) {
 	c.Handler(p, parseArgs(p.Update.Message.Text))
-}
-
-// ConversationState is
-type ConversationState struct {
-	Value interface{}
-}
-
-// ConversationHandlerFunc is a function used as a handler in the conversation handler
-type ConversationHandlerFunc func(payload *HandlePayload, state []ConversationState) (interface{}, bool)
-
-// ConversationFinalizerFunc is a function that gets passed the state of the conversation after it is finished
-type ConversationFinalizerFunc func(payload *HandlePayload, state []ConversationState)
-
-type conversationHandler struct {
-	startCommand []string
-	inProgress   bool
-	// The result from all ran handlers
-	state []ConversationState
-	// handlers to run, ran in order
-	handlers []ConversationHandlerFunc
-	// func that gets the full conversation state when all handlers have ran
-	finalizer ConversationFinalizerFunc
-}
-
-// isMatch will tell the caller we want to handle the update when we are in progress of a conversation or the start command is given
-func (c *conversationHandler) isMatch(update tgbotapi.Update) bool {
-	if c.inProgress {
-		return true
-	}
-
-	if update.Message != nil && update.Message.IsCommand() {
-		for _, command := range c.startCommand {
-			if command == update.Message.Command() {
-				return true
-			}
-		}
-		return false
-	}
-	return false
-}
-
-// handle determines which handler to run and what to pass it
-func (c *conversationHandler) handle(p *HandlePayload) {
-	c.inProgress = true
-
-	// get handler to pass to now and check if the handler exists
-	curr := len(c.state)
-
-	res, valid := c.handlers[curr](p, c.state)
-	if valid == false {
-		// Return without changing a thing so we stay in this handler for the user to try again
-		return
-	}
-
-	// Append result from handler to the conversation state
-	c.state = append(c.state, ConversationState{
-		Value: res,
-	})
-
-	if len(c.handlers)-1 == curr {
-		// Run the finalizer with the state retrieved from the conversation
-		c.finalizer(p, c.state)
-		// Reset because we are done with the conversation
-		c.inProgress = false
-		c.state = make([]ConversationState, 0)
-		return
-	}
-}
-
-// NewConversationHandler returns a conversationhandler with specified options
-func NewConversationHandler(startCommand []string, handlers []ConversationHandlerFunc, finalizer ConversationFinalizerFunc) *conversationHandler {
-	return &conversationHandler{
-		inProgress:   false,
-		state:        make([]ConversationState, 0),
-		startCommand: startCommand,
-		handlers:     handlers,
-		finalizer:    finalizer,
-	}
 }
 
 // Middleware is ran on every request, the handler must only change the handlepayload when IsSync is true
@@ -166,35 +92,50 @@ func Start(middleware []Middleware, handlers []Handler) {
 		log.Panic(err)
 	}
 
-	// Listen for new updates over the updates channel
+	asyncMiddleware := make([]Middleware, 0)
+	syncMiddleware := make([]Middleware, 0)
+	for _, m := range middleware {
+		if m.IsSync {
+			asyncMiddleware = append(syncMiddleware, m)
+		} else {
+			syncMiddleware = append(asyncMiddleware, m)
+		}
+
+	}
+
 	for update := range updates {
-		if update.Message == nil && update.CallbackQuery == nil {
-			continue
-		}
+		handle(update, bot, syncMiddleware, asyncMiddleware, handlers)
+	}
 
-		p := HandlePayload{
-			Bot:    bot,
-			Update: update,
-		}
+}
 
-		// run all our middlewares
-		for _, m := range middleware {
-			if m.IsSync == true {
-				m.Handler(&p)
-			} else {
-				go m.Handler(&p)
-			}
-		}
+func handle(update tgbotapi.Update, sender Sender, syncMiddleware []Middleware, asyncMiddleware []Middleware, handlers []Handler) {
+	if update.Message == nil && update.CallbackQuery == nil {
+		return
+	}
 
-		// Find the right handler and call it
-		for _, handler := range handlers {
-			// Check if the handler should respond to this update
-			if handler.isMatch(update) {
-				// handle update in seperate goroutine
-				go handler.handle(&p)
-				// Break because the update is handled
-				break
-			}
+	p := HandlePayload{
+		Bot:    sender,
+		Update: update,
+	}
+
+	// run all our middlewares
+	for _, m := range syncMiddleware {
+		m.Handler(&p)
+	}
+
+	for _, m := range asyncMiddleware {
+		go m.Handler(&p)
+	}
+
+	// Find the right handler and call it
+	for _, handler := range handlers {
+		// Check if the handler should respond to this update
+		if handler.isMatch(&p) {
+			// handle update in seperate goroutine
+			go handler.handle(&p)
+			// Break because the update is handled
+			break
 		}
 	}
 }
