@@ -22,7 +22,6 @@ func AssureUserExists(db *gorm.DB) func(*bot.HandlePayload) {
 		user := database.User{}
 		// Try to get the user with given id, if err and err is because we did not find
 		if err := db.First(&user, p.Update.Message.From.ID).Error; err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
-			// TODO: Add database.NewUserFromUpdate(tgbotapi.Update) on user model
 			// Create new user
 			user = database.User{
 				ID:       uint(p.Update.Message.From.ID),

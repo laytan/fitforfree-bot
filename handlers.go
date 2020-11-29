@@ -13,6 +13,7 @@ import (
 	"github.com/laytan/go-fff-notifications-bot/bot"
 	"github.com/laytan/go-fff-notifications-bot/database"
 	"github.com/laytan/go-fff-notifications-bot/fitforfree"
+	"github.com/laytan/go-fff-notifications-bot/times"
 	"gorm.io/gorm"
 )
 
@@ -34,9 +35,9 @@ func StartNotiHandler(p *bot.HandlePayload, _ []interface{}) (interface{}, bool)
 }
 
 func DateNotiHandler(p *bot.HandlePayload, _ []interface{}) (interface{}, bool) {
-	date, err := time.Parse("2-1-2006", p.Update.Message.Text)
+	date, err := times.FromInput(p.Update.Message.Text, times.DateLayout)
 	if err != nil {
-		p.Respond("Vul een geldige datum in, bijvoorbeeld 30-1-2020.")
+		p.Respond(fmt.Sprintf("Vul een geldige datum in, bijvoorbeeld %s.", times.DateLayout))
 		return nil, false
 	}
 
@@ -59,16 +60,10 @@ func TypeNotiHandler(p *bot.HandlePayload, s []interface{}) (interface{}, bool) 
 	}
 	classType := p.Update.CallbackQuery.Data
 
-	selectedDate, ok := s[1].(time.Time)
-	if !ok {
-		p.Respond("Geen goede datum ingevuld")
-		// TODO: End conversation or send back to date picking
-	}
+	selectedDate := s[1].(time.Time)
 
 	lessons := fitforfree.GetLessons(uint(selectedDate.Unix()), uint(selectedDate.Add(time.Duration(time.Hour*24)).Unix()), []string{os.Getenv("VENUE")}, os.Getenv("FIT_FOR_FREE_TOKEN"))
 	filteredTypes := fitforfree.Filter(lessons, func(lesson fitforfree.Lesson) bool {
-		// TODO: Make classType type with check func built in
-		// TODO: Filter out non-empty lessons
 		if strings.Contains(classType, "|") {
 			types := strings.Split(classType, "|")
 			for _, t := range types {
@@ -81,15 +76,14 @@ func TypeNotiHandler(p *bot.HandlePayload, s []interface{}) (interface{}, bool) 
 		}
 		return false
 	})
+
+	withoutAvailable := fitforfree.Filter(filteredTypes, func(l fitforfree.Lesson) bool {
+		return l.SpotsAvailable == 0
+	})
+
 	msg := ""
-	for i, lesson := range filteredTypes {
-		// TODO: format timestamps
-		msg += fmt.Sprintf(`
-		Nummer: %d
-		Instucteur: %s
-		Activiteit: %s
-		Start: %d
-		Eind: %d`, i, lesson.Instructor, lesson.Activity.Name, lesson.StartTimestamp, lesson.StartTimestamp+lesson.DurationSeconds)
+	for i, lesson := range withoutAvailable {
+		msg += formatLesson(lesson, uint(i))
 	}
 
 	p.Respond(fmt.Sprintf("Welk les nummer wil je in de gaten houden? Hier zijn ze allemaal: %s", msg))
@@ -103,31 +97,22 @@ func ClassNotiHandler(p *bot.HandlePayload, s []interface{}) (interface{}, bool)
 		return nil, false
 	}
 
-	lessons, ok := s[2].([]fitforfree.Lesson)
-	if !ok {
-		p.Respond("Er ging iets fout, probeer opnieuw.")
-		log.Println("ERROR: Can not convert state back to lessons slice")
-		return nil, false
-	}
+	lessons := s[2].([]fitforfree.Lesson)
 
-	// Uint so - doesn't work
+	// Uint so minus doesn't work
 	if uint(num) >= uint(len(lessons)) {
 		p.Respond("Geen les met dat nummer gevonden, probeer opnieuw.")
 		return nil, false
 	}
 
-	return lessons[num], true
+	return uint(num), true
 }
 
 // NotiHandler first type casts the conversation's state, then validates the times entered and finally inserts a new noti into the db
 func NotiHandler(db *gorm.DB) bot.ConversationFinalizerFunc {
 	return func(p *bot.HandlePayload, s []interface{}) {
-		lesson, ok := s[3].(fitforfree.Lesson)
-		if !ok {
-			p.Respond("Er ging iets fout bij het aanmaken van de notificatie.")
-			log.Printf("ERROR: Can't assert type fitforfree.lesson on given lesson: %+v", s[3])
-			return
-		}
+		num := s[3].(uint)
+		lesson := s[2].([]fitforfree.Lesson)[num]
 
 		startTimestamp := lesson.StartTimestamp
 		endTimeStamp := lesson.StartTimestamp + lesson.DurationSeconds
@@ -150,7 +135,14 @@ func NotiHandler(db *gorm.DB) bot.ConversationFinalizerFunc {
 			return
 		}
 
-		p.Respond("Notificatie aangezet.")
+		p.Respond(
+			fmt.Sprintf(
+				`%s
+				%s`,
+				"Notificatie aangezet voor les:",
+				formatLesson(lesson, num),
+			),
+		)
 	}
 }
 
@@ -217,29 +209,6 @@ func ListNotisNormalHandler(db *gorm.DB, p *bot.HandlePayload) {
 	p.Respond(msg)
 }
 
-// formatNoti formats a notification for display
-func formatNoti(noti database.Noti, withName bool) string {
-	startDate := time.Unix(int64(noti.Start), 0)
-	end := time.Unix(int64(noti.End), 0).Format("15:04")
-
-	var msg string
-	if withName {
-		msg = fmt.Sprintf("Naam: %s", noti.User.Name)
-	} else {
-		msg = ""
-	}
-
-	msg += fmt.Sprintf(`
-	Nummer: %d
-	Datum: %s
-	Start: %s
-	Eind: %s
-	Gemaakt: %s
-	`, noti.ID, startDate.Format("2-1-2006"), startDate.Format("15:04"), end, noti.CreatedAt.Format("2-1-2006 15:04"))
-
-	return msg
-}
-
 func RemoveHandler(db *gorm.DB) func(*bot.HandlePayload, []string) {
 	return func(p *bot.HandlePayload, args []string) {
 		if len(args) != 1 {
@@ -285,4 +254,42 @@ func ClearHandler(db *gorm.DB) func(*bot.HandlePayload, []string) {
 		db.Where("user_id = ?", p.User.ID).Delete(&database.Noti{})
 		p.Respond("Notificaties verwijderd")
 	}
+}
+
+func formatLesson(lesson fitforfree.Lesson, id uint) string {
+	return fmt.Sprintf(`
+		Nummer: %d
+		Activiteit: %s
+		Start: %s
+		Eind: %s`,
+		id,
+		lesson.Activity.Name,
+		times.FormatTimestamp(lesson.StartTimestamp, times.TimeLayout),
+		times.FormatTimestamp(lesson.StartTimestamp+lesson.DurationSeconds, times.TimeLayout),
+	)
+}
+
+// formatNoti formats a notification for display
+func formatNoti(noti database.Noti, withName bool) string {
+	var msg string
+	if withName {
+		msg = fmt.Sprintf("Naam: %s", noti.User.Name)
+	} else {
+		msg = ""
+	}
+
+	msg += fmt.Sprintf(`
+		Nummer: %d
+		Datum: %s
+		Start: %s
+		Eind: %s
+		Gemaakt: %s
+	`,
+		noti.ID,
+		times.FormatTimestamp(uint(noti.Start), times.DateLayout),
+		times.FormatTimestamp(uint(noti.Start), times.TimeLayout),
+		times.FormatTimestamp(uint(noti.End), times.TimeLayout),
+		times.FormatTimestamp(uint(noti.CreatedAt.Unix()), times.FullLayout))
+
+	return msg
 }
