@@ -119,24 +119,14 @@ func NotiHandler(db *gorm.DB) bot.ConversationFinalizerFunc {
 		num := s[3].(uint)
 		lesson := s[2].([]fitforfree.Lesson)[num]
 
-		startTimestamp := lesson.StartTimestamp
-		endTimeStamp := lesson.StartTimestamp + lesson.DurationSeconds
-
-		if startTimestamp < uint(time.Now().Unix()) {
+		if lesson.StartTimestamp < uint(time.Now().Unix()) {
 			p.Respond("Je kan alleen tijden in de toekomst toevoegen, probeer opnieuw")
 			return
 		}
 
-		noti := database.Noti{
-			UserID:    p.User.ID,
-			Start:     uint64(startTimestamp),
-			End:       uint64(endTimeStamp),
-			ClassType: lesson.ClassType,
-		}
-
-		if err := db.Create(&noti).Error; err != nil {
-			p.Respond("Er ging iets fout bij het aanmaken van de notificatie.")
-			log.Printf("ERROR: error on noti creation: %+v", err)
+		if err := database.CreateNoti(db, p.User, lesson); err != nil {
+			p.Respond("Er ging iets fout bij het toevoegen van de noti.")
+			log.Printf("ERROR: Error creating noti, error: %+v", err)
 			return
 		}
 
@@ -173,7 +163,7 @@ func ListNotisAdminHandler(db *gorm.DB, p *bot.HandlePayload) {
 	msg := ""
 
 	notis := make([]database.Noti, 0)
-	if err := db.Preload("User").Find(&notis).Error; err != nil {
+	if err := db.Joins("User").Joins("Lesson").Find(&notis).Error; err != nil {
 		log.Printf("ERROR: Error retrieving all notis from the database for ListNotisAdminHandler, err: %+v", err)
 		p.Respond("Er ging iets fout, probeer het opnieuw")
 		return
@@ -196,7 +186,7 @@ func ListNotisNormalHandler(db *gorm.DB, p *bot.HandlePayload) {
 	msg := ""
 
 	notis := make([]database.Noti, 0)
-	if err := db.Model(&p.User).Association("Notis").Find(&notis); err != nil {
+	if err := db.Joins("Lesson").Find(&notis).Error; err != nil {
 		log.Printf("ERROR: Error retrieving users noti's, user: %+v, err: %+v", p.User, err)
 		p.Respond("Er ging iets fout, probeer het opnieuw")
 		return
@@ -293,9 +283,9 @@ func formatNoti(noti database.Noti, withName bool) string {
 		Gemaakt: %s
 	`,
 		noti.ID,
-		times.FormatTimestamp(uint(noti.Start), times.DateLayout),
-		times.FormatTimestamp(uint(noti.Start), times.TimeLayout),
-		times.FormatTimestamp(uint(noti.End), times.TimeLayout),
+		times.FormatTimestamp(uint(noti.Lesson.Start), times.DateLayout),
+		times.FormatTimestamp(uint(noti.Lesson.Start), times.TimeLayout),
+		times.FormatTimestamp(uint(noti.Lesson.Start+noti.Lesson.DurationSeconds), times.TimeLayout),
 		times.FormatTimestamp(uint(noti.CreatedAt.Unix()), times.FullLayout))
 
 	return msg
