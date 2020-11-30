@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -92,21 +93,11 @@ func Start(middleware []Middleware, handlers []Handler) {
 		log.Panic(err)
 	}
 
-	asyncMiddleware := make([]Middleware, 0)
-	syncMiddleware := make([]Middleware, 0)
-	for _, m := range middleware {
-		if m.IsSync {
-			asyncMiddleware = append(syncMiddleware, m)
-		} else {
-			syncMiddleware = append(asyncMiddleware, m)
-		}
-
-	}
+	syncMiddleware, asyncMiddleware := splitMiddleware(middleware)
 
 	for update := range updates {
 		handle(update, bot, syncMiddleware, asyncMiddleware, handlers)
 	}
-
 }
 
 func handle(update tgbotapi.Update, sender Sender, syncMiddleware []Middleware, asyncMiddleware []Middleware, handlers []Handler) {
@@ -119,13 +110,15 @@ func handle(update tgbotapi.Update, sender Sender, syncMiddleware []Middleware, 
 		Update: update,
 	}
 
+	fmt.Println(syncMiddleware, asyncMiddleware)
+
 	// run all our middlewares
-	for _, m := range syncMiddleware {
-		m.Handler(&p)
+	for _, s := range syncMiddleware {
+		s.Handler(&p)
 	}
 
-	for _, m := range asyncMiddleware {
-		go m.Handler(&p)
+	for _, a := range asyncMiddleware {
+		go a.Handler(&p)
 	}
 
 	// Find the right handler and call it
@@ -143,4 +136,18 @@ func handle(update tgbotapi.Update, sender Sender, syncMiddleware []Middleware, 
 func parseArgs(text string) []string {
 	words := strings.Split(text, " ")
 	return words[1:]
+}
+
+func splitMiddleware(middleware []Middleware) ([]Middleware, []Middleware) {
+	asyncMiddleware := make([]Middleware, 0)
+	syncMiddleware := make([]Middleware, 0)
+	for _, m := range middleware {
+		if m.IsSync {
+			syncMiddleware = append(syncMiddleware, m)
+		} else {
+			asyncMiddleware = append(asyncMiddleware, m)
+		}
+	}
+
+	return syncMiddleware, asyncMiddleware
 }
