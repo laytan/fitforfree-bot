@@ -17,6 +17,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// HelpHandler responds with the a message
 func HelpHandler(p *bot.HandlePayload, _ []string) {
 	p.Respond(
 		`
@@ -29,11 +30,13 @@ func HelpHandler(p *bot.HandlePayload, _ []string) {
 	)
 }
 
+// StartNotiHandler asks for the date of the new notification
 func StartNotiHandler(p *bot.HandlePayload, _ []interface{}) (interface{}, bool) {
 	p.Respond("Hier gaan we, welke datum wil je sporten? (d-m-yyyy)")
 	return nil, true
 }
 
+// DateNotiHandler validates the date entered and asks for the type of lesson for the notification
 func DateNotiHandler(p *bot.HandlePayload, _ []interface{}) (interface{}, bool) {
 	date, err := times.FromInput(p.Update.Message.Text, times.DateLayout)
 	if err != nil {
@@ -53,6 +56,7 @@ func DateNotiHandler(p *bot.HandlePayload, _ []interface{}) (interface{}, bool) 
 	return date, true
 }
 
+// TypeNotiHandler validates the type entered and shows all lessons a notification can be added to asking for the number of the lesson they want to track
 func TypeNotiHandler(p *bot.HandlePayload, s []interface{}) (interface{}, bool) {
 	if p.Update.CallbackQuery == nil || !(p.Update.CallbackQuery.Data == "group_lesson|mixed_lesson" || p.Update.CallbackQuery.Data == "free_practise") {
 		p.Respond("Kies aub Groepsles of Vrij.")
@@ -90,6 +94,7 @@ func TypeNotiHandler(p *bot.HandlePayload, s []interface{}) (interface{}, bool) 
 	return filteredTypes, true
 }
 
+// ClassNotiHandler gets the lesson for the entered and validates it
 func ClassNotiHandler(p *bot.HandlePayload, s []interface{}) (interface{}, bool) {
 	num, err := strconv.Atoi(p.Update.Message.Text)
 	if err != nil {
@@ -108,7 +113,7 @@ func ClassNotiHandler(p *bot.HandlePayload, s []interface{}) (interface{}, bool)
 	return uint(num), true
 }
 
-// NotiHandler first type casts the conversation's state, then validates the times entered and finally inserts a new noti into the db
+// NotiHandler adds a new noti based on the conversations state
 func NotiHandler(db *gorm.DB) bot.ConversationFinalizerFunc {
 	return func(p *bot.HandlePayload, s []interface{}) {
 		num := s[3].(uint)
@@ -209,6 +214,7 @@ func ListNotisNormalHandler(db *gorm.DB, p *bot.HandlePayload) {
 	p.Respond(msg)
 }
 
+// RemoveHandler removes the noti specified if the user is allowed to
 func RemoveHandler(db *gorm.DB) func(*bot.HandlePayload, []string) {
 	return func(p *bot.HandlePayload, args []string) {
 		if len(args) != 1 {
@@ -249,6 +255,7 @@ func RemoveHandler(db *gorm.DB) func(*bot.HandlePayload, []string) {
 	}
 }
 
+// ClearHandler removes all noti's from a user
 func ClearHandler(db *gorm.DB) func(*bot.HandlePayload, []string) {
 	return func(p *bot.HandlePayload, _ []string) {
 		db.Where("user_id = ?", p.User.ID).Delete(&database.Noti{})

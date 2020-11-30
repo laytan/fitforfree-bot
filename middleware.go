@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// assureUserExists checks if the update user id exists in our database
+// AssureUserExists checks if the update user id exists in our database
 // if it does we set the handlePayload's user to it
 // if it does not we create the user and assign it to the handlePayload
 func AssureUserExists(db *gorm.DB) func(*bot.HandlePayload) {
