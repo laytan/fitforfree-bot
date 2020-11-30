@@ -1,6 +1,8 @@
 package times
 
-import "time"
+import (
+	"time"
+)
 
 const FullLayout = "15:04 02-01-2006"
 const DateLayout = "02-01-2006"
