@@ -7,10 +7,16 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/joho/godotenv"
 	"github.com/laytan/go-fff-notifications-bot/bot"
+	"github.com/laytan/go-fff-notifications-bot/checker"
 	"github.com/laytan/go-fff-notifications-bot/database"
+	"github.com/laytan/go-fff-notifications-bot/handlers"
+	"github.com/laytan/go-fff-notifications-bot/middleware"
+	"github.com/laytan/go-fff-notifications-bot/times"
 )
 
 func main() {
@@ -31,11 +37,11 @@ func main() {
 	middleware := []bot.Middleware{
 		{
 			IsSync:  true,
-			Handler: AssureUserExists(db),
+			Handler: middleware.AssureUserExists(db),
 		},
 		{
 			IsSync:  false,
-			Handler: LogUpdate,
+			Handler: middleware.LogUpdate,
 		},
 	}
 
@@ -43,38 +49,75 @@ func main() {
 	handlers := []bot.Handler{
 		&bot.CommandHandler{
 			Command: []string{"help", "start"},
-			Handler: HelpHandler,
+			Handler: handlers.HelpHandler,
 		},
 		&bot.CommandHandler{
 			Command: []string{"notificaties", "notifications"},
-			Handler: ListNotisHandler(db),
+			Handler: handlers.ListNotisHandler(db),
 		},
 		&bot.CommandHandler{
 			Command: []string{"verwijder", "remove"},
-			Handler: RemoveHandler(db),
+			Handler: handlers.RemoveHandler(db),
 		},
 		&bot.CommandHandler{
 			Command: []string{"clear"},
-			Handler: ClearHandler(db),
+			Handler: handlers.ClearHandler(db),
 		},
 		bot.NewConversationHandler(
 			[]string{"noti"},
 			[]bot.ConversationHandlerFunc{
 				// Ask for date
-				StartNotiHandler,
+				handlers.StartNotiHandler,
 				// Ask for group or free
-				DateNotiHandler,
+				handlers.DateNotiHandler,
 				// Show lessons on that day and ask for choise
-				TypeNotiHandler,
+				handlers.TypeNotiHandler,
 				// Get specific class
-				ClassNotiHandler,
+				handlers.ClassNotiHandler,
 			},
-			NotiHandler(db),
+			handlers.NotiHandler(db),
 		),
 	}
 
 	// start bot with our middlewares and handlers
-	go bot.Start(middleware, handlers)
+	bot := bot.Start(middleware, handlers)
+
+	// Setup checker
+	checkerT := time.NewTicker(time.Second * 100)
+	shouldNotify := make(chan database.Noti)
+	// Wait for checker in other goroutine
+	go func() {
+		for {
+			<-checkerT.C
+			// Initiate the check
+			checker.AvailabilityCheck(db, []string{os.Getenv("VENUE")}, os.Getenv("FIT_FOR_FREE_TOKEN"), shouldNotify)
+		}
+	}()
+
+	go func() {
+		for {
+			available := <-shouldNotify
+
+			// Construct message
+			msg := fmt.Sprintf(
+				`
+				Snel er is plek vrij!
+				
+				Les: %s
+				Datum: %s
+				Start: %s
+				Eind: %s
+				`,
+				available.Lesson.Name,
+				times.FormatTimestamp(available.Lesson.Start, times.DateLayout),
+				times.FormatTimestamp(available.Lesson.Start, times.TimeLayout),
+				times.FormatTimestamp(available.Lesson.Start+available.Lesson.DurationSeconds, times.TimeLayout),
+			)
+
+			// Send msg to user
+			bot.Send(tgbotapi.NewMessage(int64(available.User.ChatID), msg))
+		}
+	}()
 
 	// Channel to send to when we should exit the program
 	stop := handleStop()

@@ -1,4 +1,4 @@
-package main
+package middleware
 
 import (
 	"testing"
@@ -44,7 +44,7 @@ func TestAssureUserExists(t *testing.T) {
 	}
 
 	// Connect to db
-	db, err := gorm.Open(sqlite.Open("database/test.sqlite"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open("../database/test.sqlite"), &gorm.Config{})
 	if err != nil {
 		t.Error(err)
 	}
@@ -79,7 +79,7 @@ func TestAssureUserExists(t *testing.T) {
 
 func TestNoMessageAssureUserExists(t *testing.T) {
 	// Connect to db
-	db, err := gorm.Open(sqlite.Open("database/test.sqlite"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open("../database/test.sqlite"), &gorm.Config{})
 	if err != nil {
 		t.Error(err)
 	}

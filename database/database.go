@@ -45,6 +45,7 @@ type Lesson struct {
 	Start           uint
 	DurationSeconds uint
 	ClassType       string
+	Name            string
 }
 
 // New returns a database connection which is migrated acording to the models
@@ -91,6 +92,7 @@ func CreateNoti(db *gorm.DB, user User, lesson fitforfree.Lesson) error {
 		Start:           lesson.StartTimestamp,
 		DurationSeconds: lesson.DurationSeconds,
 		ClassType:       lesson.ClassType,
+		Name:            lesson.Activity.Name,
 	}
 	db.FirstOrCreate(&l)
 

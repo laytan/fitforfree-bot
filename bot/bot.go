@@ -1,7 +1,6 @@
 package bot
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -73,7 +72,7 @@ type Middleware struct {
 }
 
 // Start sets up the bot and starts retrieving updates
-func Start(middleware []Middleware, handlers []Handler) {
+func Start(middleware []Middleware, handlers []Handler) *tgbotapi.BotAPI {
 	botToken, isSet := os.LookupEnv("BOT_TOKEN")
 	if !isSet {
 		log.Panic("ERROR: BOT_TOKEN environment variable not set")
@@ -95,9 +94,13 @@ func Start(middleware []Middleware, handlers []Handler) {
 
 	syncMiddleware, asyncMiddleware := splitMiddleware(middleware)
 
-	for update := range updates {
-		handle(update, bot, syncMiddleware, asyncMiddleware, handlers)
-	}
+	go func() {
+		for update := range updates {
+			handle(update, bot, syncMiddleware, asyncMiddleware, handlers)
+		}
+	}()
+
+	return bot
 }
 
 func handle(update tgbotapi.Update, sender Sender, syncMiddleware []Middleware, asyncMiddleware []Middleware, handlers []Handler) {
@@ -109,8 +112,6 @@ func handle(update tgbotapi.Update, sender Sender, syncMiddleware []Middleware, 
 		Bot:    sender,
 		Update: update,
 	}
-
-	fmt.Println(syncMiddleware, asyncMiddleware)
 
 	// run all our middlewares
 	for _, s := range syncMiddleware {
