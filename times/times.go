@@ -10,6 +10,8 @@ const TimeLayout = "15:04"
 
 func FormatTimestamp(timestamp uint, layout string) string {
 	t := time.Unix(int64(timestamp), 0)
+	loc, _ := time.LoadLocation("Europe/Amsterdam")
+	t = t.In(loc)
 	return t.Format(layout)
 }
 
