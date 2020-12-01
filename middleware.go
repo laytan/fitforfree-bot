@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"log"
 
@@ -10,7 +9,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// assureUserExists checks if the update user id exists in our database
+// AssureUserExists checks if the update user id exists in our database
 // if it does we set the handlePayload's user to it
 // if it does not we create the user and assign it to the handlePayload
 func AssureUserExists(db *gorm.DB) func(*bot.HandlePayload) {
@@ -19,23 +18,17 @@ func AssureUserExists(db *gorm.DB) func(*bot.HandlePayload) {
 			return
 		}
 
-		user := database.User{}
-		// Try to get the user with given id, if err and err is because we did not find
-		if err := db.First(&user, p.Update.Message.From.ID).Error; err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
-			// Create new user
-			user = database.User{
-				ID:       uint(p.Update.Message.From.ID),
-				Name:     fmt.Sprintf("%s %s", p.Update.Message.From.FirstName, p.Update.Message.From.LastName),
-				Username: p.Update.Message.From.UserName,
-				ChatID:   uint(p.Update.Message.Chat.ID),
-			}
-
-			if err := db.Create(&user).Error; err != nil {
-				log.Printf("ERROR: %+v with UPDATE: %+v", err, p.Update)
-			}
-
-			log.Printf("[%s](%d) User Created", p.Update.Message.From.FirstName, p.Update.Message.From.ID)
+		user := database.User{
+			ID:       uint(p.Update.Message.From.ID),
+			Name:     fmt.Sprintf("%s %s", p.Update.Message.From.FirstName, p.Update.Message.From.LastName),
+			Username: p.Update.Message.From.UserName,
+			ChatID:   uint(p.Update.Message.Chat.ID),
 		}
+
+		if err := db.FirstOrCreate(&user).Error; err != nil {
+			log.Printf("ERROR: Error creating/getting user in middleware %+v", err)
+		}
+
 		p.User = user
 	}
 }

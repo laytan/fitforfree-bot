@@ -3,6 +3,7 @@ package bot
 import (
 	"fmt"
 	"math/rand"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -434,5 +435,83 @@ func TestConversationCallbackQuery(t *testing.T) {
 
 	if !finalizerRan {
 		t.Error("Finalizer should have ran here")
+	}
+}
+
+type SplitMiddlewareTestPayload struct {
+	Middlewares   []Middleware
+	ExpectedSync  []Middleware
+	ExpectedAsync []Middleware
+}
+
+func TestSplitMiddleware(t *testing.T) {
+	asyncMiddleware := Middleware{
+		IsSync: false,
+	}
+	syncMiddleware := Middleware{
+		IsSync: true,
+	}
+
+	payloads := []SplitMiddlewareTestPayload{
+		{
+			Middlewares:   []Middleware{asyncMiddleware},
+			ExpectedSync:  make([]Middleware, 0),
+			ExpectedAsync: []Middleware{asyncMiddleware},
+		},
+		{
+			Middlewares:   []Middleware{asyncMiddleware, syncMiddleware},
+			ExpectedSync:  []Middleware{syncMiddleware},
+			ExpectedAsync: []Middleware{asyncMiddleware},
+		},
+		{
+			Middlewares:   []Middleware{asyncMiddleware, asyncMiddleware, syncMiddleware, syncMiddleware, asyncMiddleware, syncMiddleware, asyncMiddleware},
+			ExpectedSync:  []Middleware{syncMiddleware, syncMiddleware, syncMiddleware},
+			ExpectedAsync: []Middleware{asyncMiddleware, asyncMiddleware, asyncMiddleware, asyncMiddleware},
+		},
+		{
+			Middlewares:   make([]Middleware, 0),
+			ExpectedSync:  make([]Middleware, 0),
+			ExpectedAsync: make([]Middleware, 0),
+		},
+	}
+
+	for _, p := range payloads {
+		sync, async := splitMiddleware(p.Middlewares)
+
+		if len(sync) != len(p.ExpectedSync) {
+			t.Error("Not same length")
+		}
+
+		for _, es := range p.ExpectedSync {
+			found := false
+			for _, s := range sync {
+				if reflect.DeepEqual(es, s) {
+					found = true
+					break
+				}
+			}
+
+			if !found {
+				t.Error("Expected not in actual slice")
+			}
+		}
+
+		if len(async) != len(p.ExpectedAsync) {
+			t.Error("Not same length")
+		}
+
+		for _, ea := range p.ExpectedAsync {
+			found := false
+			for _, a := range async {
+				if reflect.DeepEqual(ea, a) {
+					found = true
+					break
+				}
+			}
+
+			if !found {
+				t.Error("Expected not in actual slice")
+			}
+		}
 	}
 }
