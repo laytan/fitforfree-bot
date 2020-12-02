@@ -93,19 +93,19 @@ func TestConversationHandler(t *testing.T) {
 		NewConversationHandler(
 			[]string{"test"},
 			[]ConversationHandlerFunc{
-				func(_ *HandlePayload, _ []interface{}) (interface{}, bool) {
+				func(_ *HandlePayload, _ *[]interface{}) (interface{}, bool) {
 					return "Handler 1", true
 				},
-				func(_ *HandlePayload, _ []interface{}) (interface{}, bool) {
+				func(_ *HandlePayload, _ *[]interface{}) (interface{}, bool) {
 					return database.User{ID: 2}, true
 				},
 			},
-			func(_ *HandlePayload, state []interface{}) {
-				if state[0] != "Handler 1" {
+			func(_ *HandlePayload, state *[]interface{}) {
+				if (*state)[0] != "Handler 1" {
 					t.Error("Handler 1 state not correct")
 				}
 
-				userFromState, ok := state[1].(database.User)
+				userFromState, ok := (*state)[1].(database.User)
 				if !ok {
 					t.Error("Did not receive user struct from state/conversation")
 				}
@@ -139,6 +139,66 @@ func TestConversationHandler(t *testing.T) {
 	}
 }
 
+func TestConversationHandlerStop(t *testing.T) {
+	sender := mockSender{OnSend: func(t tgbotapi.Chattable) {}}
+
+	// Conversations require a user
+	middlewares := []Middleware{
+		{
+			IsSync: true,
+			Handler: func(p *HandlePayload) {
+				p.User = database.User{
+					ID: 2,
+				}
+			},
+		},
+	}
+
+	called := 0
+
+	handlers := []Handler{
+		NewConversationHandler(
+			[]string{"test"},
+			[]ConversationHandlerFunc{
+				func(_ *HandlePayload, _ *[]interface{}) (interface{}, bool) {
+					called++
+					return nil, true
+				},
+				func(_ *HandlePayload, _ *[]interface{}) (interface{}, bool) {
+					return nil, true
+				},
+			},
+			func(_ *HandlePayload, state *[]interface{}) {},
+		),
+	}
+
+	update := newMockCommandUpdate("/test", "")
+	update.Message.From = &tgbotapi.User{ID: 2}
+	update.Message.Chat = &tgbotapi.Chat{ID: 1}
+	update2 := newMockCommandUpdate("/stop", "")
+	update2.Message.From = &tgbotapi.User{ID: 2}
+	update2.Message.Chat = &tgbotapi.Chat{ID: 1}
+
+	handle(update, sender, middlewares, make([]Middleware, 0), handlers)
+
+	timer := time.NewTimer(time.Millisecond * 50)
+	<-timer.C
+
+	handle(update2, sender, middlewares, make([]Middleware, 0), handlers)
+
+	timer = time.NewTimer(time.Millisecond * 50)
+	<-timer.C
+
+	handle(update, sender, middlewares, make([]Middleware, 0), handlers)
+
+	timer = time.NewTimer(time.Millisecond * 50)
+	<-timer.C
+
+	if called != 2 {
+		t.Error("/stop does not work")
+	}
+}
+
 func TestMultipleConversations(t *testing.T) {
 	wg := sync.WaitGroup{}
 	sender := mockSender{}
@@ -157,20 +217,20 @@ func TestMultipleConversations(t *testing.T) {
 		NewConversationHandler(
 			[]string{"test"},
 			[]ConversationHandlerFunc{
-				func(payload *HandlePayload, _ []interface{}) (interface{}, bool) {
+				func(payload *HandlePayload, _ *[]interface{}) (interface{}, bool) {
 					return payload.User.ID, true
 				},
-				func(payload *HandlePayload, _ []interface{}) (interface{}, bool) {
+				func(payload *HandlePayload, _ *[]interface{}) (interface{}, bool) {
 					return payload.User.ID, true
 				},
 			},
-			func(_ *HandlePayload, state []interface{}) {
-				userIDFromHandler, ok := state[0].(uint)
+			func(_ *HandlePayload, state *[]interface{}) {
+				userIDFromHandler, ok := (*state)[0].(uint)
 				if !ok {
 					t.Error("Did not receive uint from state 0")
 				}
 
-				userIDFromHandler2, ok := state[0].(uint)
+				userIDFromHandler2, ok := (*state)[0].(uint)
 				if !ok {
 					t.Error("Did not receive uint from state 1")
 				}
@@ -338,7 +398,7 @@ func TestPayloadRespond(t *testing.T) {
 }
 
 func TestConversationHandlerHandleShouldNotCrashWhenThereIsNoInstanceAllOfTheSudden(t *testing.T) {
-	handler := NewConversationHandler([]string{"test"}, make([]ConversationHandlerFunc, 0), func(payload *HandlePayload, state []interface{}) {})
+	handler := NewConversationHandler([]string{"test"}, make([]ConversationHandlerFunc, 0), func(payload *HandlePayload, state *[]interface{}) {})
 	payload := HandlePayload{}
 	handler.handle(&payload)
 }
@@ -347,7 +407,7 @@ func TestConversationHandlerInvalidMessage(t *testing.T) {
 	called := 0
 	finalizerRan := false
 	handlers := []ConversationHandlerFunc{
-		func(payload *HandlePayload, state []interface{}) (interface{}, bool) {
+		func(payload *HandlePayload, state *[]interface{}) (interface{}, bool) {
 			called++
 			if called == 1 {
 				return nil, false
@@ -357,7 +417,7 @@ func TestConversationHandlerInvalidMessage(t *testing.T) {
 	}
 
 	handler := NewConversationHandler([]string{"test"}, handlers,
-		func(payload *HandlePayload, state []interface{}) {
+		func(payload *HandlePayload, state *[]interface{}) {
 			if called != 2 {
 				t.Error("Handler should have been called twice")
 			}
@@ -385,7 +445,7 @@ func TestConversationHandlerInvalidMessage(t *testing.T) {
 }
 
 func TestConversationHandlerIsMatchReturnsFalseOnEmptyUpdate(t *testing.T) {
-	handler := NewConversationHandler([]string{"test"}, make([]ConversationHandlerFunc, 0), func(payload *HandlePayload, state []interface{}) {})
+	handler := NewConversationHandler([]string{"test"}, make([]ConversationHandlerFunc, 0), func(payload *HandlePayload, state *[]interface{}) {})
 	if handler.isMatch(&HandlePayload{
 		Update: tgbotapi.Update{},
 	}) {
@@ -398,7 +458,7 @@ func TestConversationCallbackQuery(t *testing.T) {
 	handler := NewConversationHandler(
 		[]string{"test"},
 		[]ConversationHandlerFunc{
-			func(p *HandlePayload, _ []interface{}) (interface{}, bool) {
+			func(p *HandlePayload, _ *[]interface{}) (interface{}, bool) {
 				if p.Update.CallbackQuery == nil {
 					t.Error("Should have callbackQuery here")
 				}
@@ -410,8 +470,8 @@ func TestConversationCallbackQuery(t *testing.T) {
 				return "test", true
 			},
 		},
-		func(_ *HandlePayload, state []interface{}) {
-			if state[0] != "test" {
+		func(_ *HandlePayload, state *[]interface{}) {
+			if (*state)[0] != "test" {
 				t.Error("Should have test in state from handler")
 			}
 			finalizerRan = true

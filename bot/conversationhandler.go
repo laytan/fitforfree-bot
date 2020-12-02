@@ -60,6 +60,14 @@ func (c *conversationHandler) handle(p *HandlePayload) {
 		return
 	}
 
+	// Stop on /stop
+	// TODO: onStop hook?
+	if p.Update.Message != nil && p.Update.Message.IsCommand() && p.Update.Message.Command() == "stop" {
+		c.instances.Delete(p.User.ID)
+		p.Respond("Gestopt")
+		return
+	}
+
 	instance.lock.Lock()
 	defer instance.lock.Unlock()
 
@@ -67,7 +75,7 @@ func (c *conversationHandler) handle(p *HandlePayload) {
 	curr := len(*instance.state)
 
 	// execute handler
-	res, valid := c.handlers[curr](p, *instance.state)
+	res, valid := c.handlers[curr](p, instance.state)
 	if valid == false {
 		// Return without changing a thing so we stay in this handler for the user to try again
 		return
@@ -78,7 +86,7 @@ func (c *conversationHandler) handle(p *HandlePayload) {
 
 	if len(c.handlers)-1 == curr {
 		// Run the finalizer with the state retrieved from the conversation
-		c.finalizer(p, *instance.state)
+		c.finalizer(p, instance.state)
 
 		// Remove conversation instance because it is done
 		c.instances.Delete(p.User.ID)
@@ -87,10 +95,10 @@ func (c *conversationHandler) handle(p *HandlePayload) {
 }
 
 // ConversationHandlerFunc is a function used as a handler in the conversation handler
-type ConversationHandlerFunc func(payload *HandlePayload, state []interface{}) (interface{}, bool)
+type ConversationHandlerFunc func(payload *HandlePayload, state *[]interface{}) (interface{}, bool)
 
 // ConversationFinalizerFunc is a function that gets passed the state of the conversation after it is finished
-type ConversationFinalizerFunc func(payload *HandlePayload, state []interface{})
+type ConversationFinalizerFunc func(payload *HandlePayload, state *[]interface{})
 
 // conversationIntances is a sync map wrapped with type safe functions
 type conversationInstances struct {

@@ -17,13 +17,13 @@ import (
 )
 
 // StartNotiHandler asks for the date of the new notification
-func StartNotiHandler(p *bot.HandlePayload, _ []interface{}) (interface{}, bool) {
-	p.Respond("Hier gaan we, welke datum wil je sporten? (d-m-yyyy)")
+func StartNotiHandler(p *bot.HandlePayload, _ *[]interface{}) (interface{}, bool) {
+	p.Respond("Hier gaan we, welke datum wil je sporten? (/stop om dit gesprek te stoppen)")
 	return nil, true
 }
 
 // DateNotiHandler validates the date entered and asks for the type of lesson for the notification
-func DateNotiHandler(p *bot.HandlePayload, _ []interface{}) (interface{}, bool) {
+func DateNotiHandler(p *bot.HandlePayload, _ *[]interface{}) (interface{}, bool) {
 	date, err := times.FromInput(p.Update.Message.Text, times.DateLayout)
 	if err != nil {
 		p.Respond(fmt.Sprintf("Vul een geldige datum in, bijvoorbeeld %s.", times.DateLayout))
@@ -43,16 +43,16 @@ func DateNotiHandler(p *bot.HandlePayload, _ []interface{}) (interface{}, bool) 
 }
 
 // TypeNotiHandler validates the type entered and shows all lessons a notification can be added to asking for the number of the lesson they want to track
-func TypeNotiHandler(p *bot.HandlePayload, s []interface{}) (interface{}, bool) {
+func TypeNotiHandler(p *bot.HandlePayload, s *[]interface{}) (interface{}, bool) {
 	if p.Update.CallbackQuery == nil || !(p.Update.CallbackQuery.Data == "group_lesson|mixed_lesson" || p.Update.CallbackQuery.Data == "free_practise") {
 		p.Respond("Kies aub Groepsles of Vrij.")
 		return nil, false
 	}
 	classType := p.Update.CallbackQuery.Data
 
-	selectedDate := s[1].(time.Time)
-
-	lessons := fitforfree.GetLessons(uint(selectedDate.Unix()), uint(selectedDate.Add(time.Duration(time.Hour*24)).Unix()), []string{os.Getenv("VENUE")}, os.Getenv("FIT_FOR_FREE_TOKEN"))
+	selectedStamp := (*s)[1].(time.Time).Unix()
+	end := selectedStamp + 60*60*24
+	lessons := fitforfree.GetLessons(uint(selectedStamp)-1, uint(end)+1, []string{os.Getenv("VENUE")}, os.Getenv("FIT_FOR_FREE_TOKEN"))
 	filteredTypes := fitforfree.Filter(lessons, func(lesson fitforfree.Lesson) bool {
 		if strings.Contains(classType, "|") {
 			types := strings.Split(classType, "|")
@@ -67,6 +67,13 @@ func TypeNotiHandler(p *bot.HandlePayload, s []interface{}) (interface{}, bool) 
 		return false
 	})
 
+	if len(filteredTypes) == 0 {
+		p.Respond("Geen lessen op dat moment, vul een andere datum in.")
+		// Override the state so we get back to the DateNotiHandler
+		*s = []interface{}{nil}
+		return nil, false
+	}
+
 	msg := ""
 	for i, lesson := range filteredTypes {
 		msg += formatLesson(lesson, uint(i))
@@ -77,14 +84,14 @@ func TypeNotiHandler(p *bot.HandlePayload, s []interface{}) (interface{}, bool) 
 }
 
 // ClassNotiHandler gets the lesson for the entered and validates it
-func ClassNotiHandler(p *bot.HandlePayload, s []interface{}) (interface{}, bool) {
+func ClassNotiHandler(p *bot.HandlePayload, s *[]interface{}) (interface{}, bool) {
 	num, err := strconv.Atoi(p.Update.Message.Text)
 	if err != nil {
 		p.Respond("Ongeldig nummer, probeer opnieuw.")
 		return nil, false
 	}
 
-	lessons := s[2].([]fitforfree.Lesson)
+	lessons := (*s)[2].([]fitforfree.Lesson)
 
 	// Uint so minus doesn't work
 	if uint(num) >= uint(len(lessons)) {
@@ -97,9 +104,9 @@ func ClassNotiHandler(p *bot.HandlePayload, s []interface{}) (interface{}, bool)
 
 // NotiHandler adds a new noti based on the conversations state
 func NotiHandler(db *gorm.DB) bot.ConversationFinalizerFunc {
-	return func(p *bot.HandlePayload, s []interface{}) {
-		num := s[3].(uint)
-		lesson := s[2].([]fitforfree.Lesson)[num]
+	return func(p *bot.HandlePayload, s *[]interface{}) {
+		num := (*s)[3].(uint)
+		lesson := (*s)[2].([]fitforfree.Lesson)[num]
 
 		if lesson.StartTimestamp < uint(time.Now().Unix()) {
 			p.Respond("Je kan alleen tijden in de toekomst toevoegen, probeer opnieuw")
