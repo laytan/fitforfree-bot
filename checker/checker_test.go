@@ -26,8 +26,8 @@ func TestGetCheckTimeFrame(t *testing.T) {
 					},
 				},
 			},
-			outStart: 1,
-			outEnd:   10,
+			outStart: 0,
+			outEnd:   11,
 		},
 		{
 			notis:    []database.Noti{},
@@ -51,8 +51,8 @@ func TestGetCheckTimeFrame(t *testing.T) {
 					},
 				},
 			},
-			outStart: 5,
-			outEnd:   15,
+			outStart: 4,
+			outEnd:   16,
 		},
 		{
 			notis: []database.Noti{
@@ -79,13 +79,13 @@ func TestGetCheckTimeFrame(t *testing.T) {
 					},
 				},
 			},
-			outStart: 5,
-			outEnd:   25,
+			outStart: 4,
+			outEnd:   26,
 		},
 	}
 
 	// Connect to db
-	db, err := gorm.Open(sqlite.Open("database/test.sqlite"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open("../database/test.sqlite"), &gorm.Config{})
 	if err != nil {
 		t.Error(err)
 	}

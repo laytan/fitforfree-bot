@@ -61,7 +61,7 @@ func getCheckTimeframe(db *gorm.DB) (uint, uint, []database.Noti) {
 		}
 	}
 
-	return start, end, notis
+	return start - 1, end + 1, notis
 }
 
 // Filters out all lessons that are unavailable
