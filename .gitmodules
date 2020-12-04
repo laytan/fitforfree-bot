@@ -1,0 +1,3 @@
+[submodule "gotermux"]
+	path = gotermux
+	url = https://github.com/laytan/gotermux.git
