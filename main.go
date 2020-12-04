@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -15,6 +14,7 @@ import (
 	"github.com/laytan/go-fff-notifications-bot/checker"
 	"github.com/laytan/go-fff-notifications-bot/database"
 	"github.com/laytan/go-fff-notifications-bot/handlers"
+	"github.com/laytan/go-fff-notifications-bot/logs"
 	"github.com/laytan/go-fff-notifications-bot/middleware"
 	"github.com/laytan/go-fff-notifications-bot/times"
 )
@@ -25,13 +25,13 @@ func main() {
 	}
 
 	// Setup logs and close log file once the program stops
-	logFile := setupLogs()
+	logFile := logs.SetupLogs()
 	defer logFile.Close()
 
 	log.Println("Starting program")
 
 	// Get database conn
-	db := database.New("database/database.sqlite", database.NewLogger(logFile))
+	db := database.New("database/database.sqlite", logs.NewDatabaseLogger(logFile))
 
 	// middlewares are ran on every chat update
 	middleware := []bot.Middleware{
@@ -126,25 +126,6 @@ func main() {
 	// Wait for stop channel so program does not exit
 	<-stop
 	log.Println("Stopping program")
-}
-
-// setupLogs sets up the logger to log to file and stdout. Filename is dependant on the environment
-func setupLogs() *os.File {
-	env, isSet := os.LookupEnv("ENV")
-	if !isSet {
-		env = "development"
-	}
-
-	logFile, err := os.OpenFile(fmt.Sprintf("logs/%s.log", env), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		panic(err)
-	}
-
-	// Set up logging so it writes to stdout and to a file
-	wrt := io.MultiWriter(os.Stdout, logFile)
-	log.SetOutput(wrt)
-
-	return logFile
 }
 
 // handleStop sends true to the returned channel when sigint or sigterm is received

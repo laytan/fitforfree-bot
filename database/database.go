@@ -3,10 +3,7 @@ package database
 import (
 	"errors"
 	"fmt"
-	"io"
-	"log"
 	"os"
-	"time"
 
 	"github.com/laytan/go-fff-notifications-bot/fitforfree"
 	"gorm.io/driver/sqlite"
@@ -64,25 +61,6 @@ func New(dbPath string, theLogger logger.Interface) *gorm.DB {
 	}
 
 	return gormDb
-}
-
-// NewLogger returns a logger based on the environment
-func NewLogger(logFile *os.File) logger.Interface {
-	if os.Getenv("ENV") == "production" {
-		// Set up logging so it writes to stdout and to a file
-		wrt := io.MultiWriter(os.Stdout, logFile)
-
-		return logger.New(
-			log.New(wrt, "\r\n", log.LstdFlags),
-			logger.Config{
-				SlowThreshold: time.Millisecond * 100,
-				LogLevel:      logger.Warn,
-				Colorful:      false,
-			},
-		)
-	}
-
-	return logger.Default.LogMode(logger.Info)
 }
 
 // CreateNoti creates a noti and a lesson if it does not already exist
