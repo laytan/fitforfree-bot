@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/laytan/go-fff-notifications-bot/termux"
+	termux "github.com/laytan/gotermux"
 )
 
 // SetupLogs sets up the logger to log to file and stdout. Filename is dependant on the environment
@@ -36,18 +36,18 @@ func SendNotification(title string, msg string, fullVolume bool) {
 
 	var currVolume termux.Volume
 	if fullVolume {
-		currVolume, err := termux.VolumeOf("notification")
+		currVolume, err := termux.VolumeOf(termux.VolumeStreamNotification)
 		if err != nil {
 			log.Printf("Error retrieving current volume, err: %+v", err)
 			return
 		}
 
-		termux.SetVolume("notification", currVolume.MaxVolume)
+		termux.SetVolume(termux.VolumeStreamNotification, currVolume.MaxVolume)
 	}
 
-	termux.Notificate(title, msg, nil)
+	termux.ShowNotification(title, msg, nil)
 
 	if fullVolume {
-		termux.SetVolume("notification", currVolume.Volume)
+		termux.SetVolume(termux.VolumeStreamNotification, currVolume.Volume)
 	}
 }
