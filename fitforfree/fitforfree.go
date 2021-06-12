@@ -63,9 +63,8 @@ type Activity struct {
 }
 
 type Venue struct {
-	ID     string
-	Name   string
-	F500ID uint
+	ID   string
+	Name string
 }
 
 type LoginResponse struct {
@@ -117,6 +116,8 @@ func doGetRequest(url string, bearerToken string) ([]byte, uint) {
 		log.Panicf("ERROR: Error while creating request, err: %+v", err)
 	}
 
+	req.Header.Add("app-version", "4.6.4")
+
 	if len(bearerToken) > 0 {
 		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", bearerToken))
 	}
@@ -155,6 +156,7 @@ func doPostRequest(url string, data interface{}, bearerToken string) ([]byte, ui
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Add("app-version", "4.6.4")
 
 	if len(bearerToken) > 0 {
 		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", bearerToken))
